@@ -1,7 +1,9 @@
 import os
 from openai import OpenAI
 import gradio as gr
-
+from pprint import pprint
+import uuid
+import chromadb
 #-----------------------------------------------------
 # Setup
 #-----------------------------------------------------
@@ -14,6 +16,19 @@ client = OpenAI()
 #-----------------------------------------------------
 # Document
 #-----------------------------------------------------
+document_professional_summary = """
+
+•	18 years of experience in software engineering, technical support engineering, Site Reliability Engineering (SRE), cloud engineering, distributed systems, telecom, and customer-facing technical operations.
+•	Extensive experience providing technical guidance to customers, developers, and external partners throughout API integration, onboarding, production deployment, troubleshooting, and support.
+•	Strong experience designing, developing, testing, deploying, and supporting Java-based backend services, REST APIs, cloud-native applications, distributed systems, and microservices throughout the Software Development Lifecycle (SDLC).
+•	Proven ability to troubleshoot complex customer issues using observability platforms including Prometheus, Grafana dashboards, Elasticsearch, Kibana, PagerDuty, logging, metrics, alerting, and distributed tracing to quickly diagnose and resolve production incidents.
+•	Extensive experience collaborating with software engineering, product management, customer success, solution architects, vendors, and customer development teams to resolve customer escalations, improve API integrations, and enhance customer experience.
+•	Experience developing troubleshooting guides, technical documentation, automation scripts, KPI dashboards, and support documentation to improve operational efficiency and customer self-service.
+•	Strong background in production support, incident response, root cause analysis, postmortems, customer communications, API lifecycle management, cloud-native platforms, Kubernetes operations, Linux administration, and automation in Agile environments.
+•	Lean Six Sigma Green Belt with strong analytical, problem-solving, and continuous improvement skills focused on improving customer satisfaction, operational excellence, reliability, and engineering productivity.
+•	Innovative software engineer passionate about customer success, API platforms, cloud-native technologies, AI infrastructure, and leveraging LLMs, RAG, MCP, AIOps, and MLOps to automate workflows and improve engineering operations.
+"""
+
 document_professional_experience = """
 Site Reliability Professional, Aduna Global USA                                                                                 July 2025 to June 2026
 •	Served as the primary technical interface for customers, CSPs, developers, and external partners during SIM Swap, Number Verification, Device Swap, and KYC API integrations, providing technical guidance throughout onboarding, testing, deployment, validation, and production support.
@@ -48,8 +63,116 @@ Senior Manager | Manager | Engineer network Operations, MTN Rwanda              
 •	Coordinated customers, vendors, field engineers, and cross-functional technical teams to resolve complex customer-impacting issues while maintaining high service availability.
 •	Developed operational procedures, troubleshooting guides, technical documentation, knowledge base content, KPI dashboards, and performance reports supporting engineering excellence.
 •	Led infrastructure modernization initiatives, mentored engineering teams, managed technical projects, and promoted knowledge sharing and operational best practices across the organization.
-
 """
+
+document_education = """
+Master of Technology in Telecommunication Tshwane University of Technology, South Africa, 2007
+Master of Science (MSc) in Electronic Engineering Ecole Supérieure d’Ingénieurs en Electronique et Electrotechnique, France, 2007 
+Bachelor of Science (BSc) in Electrical Engineering University of the Witwatersrand, South Africa, 2004
+"""
+
+document_certification = """
+AI Engineer Challenge by SuperDataScience (https://www.skool.com/ai-challenge)                                         2026
+Lean Six Sigma Green Belt by Ericsson                                                                                  2026                                             
+Cloud Native Fundamental 2024 by Ericsson                                                                         2024-2027
+Microsoft Certified Azure Fundamentals by Microsoft                                                                    2024
+Lean Six Sigma Yellow Belt by Ericsson                                                                                 2024                                             
+Global Tech Talent 2023 by Ericsson                                                                                    2023 
+AWS Certified Developer–Associate by Amazon Web Services Training & Certification                                 2020-2023                                                                    
+Certified Associate in Project Management (CAPM) by Project Management Institute                                  2019-2027
+Java and Object-oriented programming by Southern Maine Community College (SMCC)                                        2018
+"""
+
+#-----------------------------------------------------
+# Chunking Function
+#-----------------------------------------------------
+def split_text_into_chunks(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]:
+    BOUNDARIES = ["\n\n", "\n", ". ", "? ", "! ", " "]
+
+    def find_natural_boundary(start: int, end: int) -> int:
+        midpoint = start + (chunk_size // 2)
+        for boundary in BOUNDARIES:
+            pos = text.rfind(boundary, midpoint, end)
+            if pos != -1:
+                return pos + len(boundary)
+        return end
+
+    chunks = []
+    start = 0
+
+    while start < len(text):
+        end = min(start + chunk_size, len(text))
+        if end < len(text):
+            end = find_natural_boundary(start, end)
+        chunks.append(text[start:end])
+        if end >= len(text):
+            break
+        start = max(start + 1, end - overlap)
+    return chunks
+
+#-----------------------------------------------------
+# RAG: Chunk, Embed & Store in ChromaDB
+#-----------------------------------------------------
+documents = [
+    {"text": document_professional_summary, "source": "Professional Summary"},
+    {"text": document_professional_experience, "source": "Professional Experience"},
+    {"text": document_education, "source": "Education"},
+    {"text": document_certification, "source": "Certification"}    
+]
+
+chunks = []
+ids = []
+metadatas = [] 
+
+for doc in documents:
+    # Prepare the lists
+    chunks_ = split_text_into_chunks(doc["text"], chunk_size = 300, overlap = 30)
+    ids_ = [str(uuid.uuid4()) for _ in range(len(chunks_))]
+    metadatas_ = [{"source": doc["source"], "chunk_index": i} for i in range(len(chunks_))]
+
+    # Add to main lists
+    chunks.extend(chunks_)
+    ids.extend(ids_)
+    metadatas.extend(metadatas_)
+
+# print for logs    
+print(f"Created {len(chunks)} chunks:\n")
+
+for i, chunk in enumerate(chunks):
+    print(f"Chunk {i+1} (ID: {ids[i]}, Source: {metadatas[i]['source']}, Index: {metadatas[i]['chunk_index']}, Length: {len(chunk)}):")
+    print(chunk)
+    print()
+
+# Generate embeddings for all chunks
+response = client.embeddings.create(
+    model = "text-embedding-3-small",
+    input = chunks
+)
+embeddings = [item.embedding for item in response.data]
+
+# Verify embeddings for logs
+print(f"Generated {len(embeddings)} embeddings")
+print(f"Each embedding has {len(embeddings[0])} dimensions")
+
+# initialize ChromaDB client (persitent storage)
+chroma_client = chromadb.PersistentClient(path="./chroma_db_twin")
+# Alternative: initialize ChromaDB client (in-memory storage)
+#chroma_client = chromadb.Client()
+
+# Get or create + Empty the collection before adding new data (for testing purposes)
+collection = chroma_client.get_or_create_collection(name="digital_twin")
+if collection.get()["ids"]:
+    collection.delete(collection.get()["ids"])
+
+# Adding data to ChromaDB
+collection.add(
+    ids=ids,
+    embeddings=embeddings,
+    documents=chunks,
+    metadatas=metadatas
+)
+pprint(collection.get())
+
 #-----------------------------------------------------
 # System Message
 #-----------------------------------------------------
@@ -63,14 +186,32 @@ You cannot get any more facts about Gaby from the internet or make them up."""
 # Main Response Function
 #-----------------------------------------------------
 def respond_ai(message, history):
-    # Update system message with context for this conversation turn 
-    system_message_enhanced = system_message + "\n\nContext:\n" + document_professional_experience
+    # RAG: Embed the query using the same model we used for the chunks to ensure compatibility    
+    response = client.embeddings.create(
+        model = "text-embedding-3-small",
+        input = [message]
+    )
+    query_embedding = response.data[0].embedding
 
-    # Logs for debugging 
-    print("\n===========================================\n")
-    print("***User message:\n", message)
-    print("\nContext this turn:\n", system_message_enhanced)
-    
+    # RAG: Search ChromaDB
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=3
+    )
+
+    # RAG: Stitch retrieved chunks together to create the context for the response
+    context = "\n---\n".join(results["documents"][0])
+
+    # Print logs for debugging
+    print("\n==========================================================\n")
+    print(f"User message:\n{message}\n")
+    print("***Retrieved Chunks:")
+    for a,b in zip(results["documents"][0], results["metadatas"][0]):
+        print("------------------------------------------------------------")
+        print(f"<<Document {b['source']} -- Chunk {b['chunk_index']}>>\n{a}\n")
+
+    # Update system message with context for this conversation turn 
+    system_message_enhanced = system_message + "\n\nContext:\n" + context    
 
     # Build messages for this turn
     messages = [{"role": "system", "content": system_message_enhanced}] + history + [{"role": "user", "content": message}]   
