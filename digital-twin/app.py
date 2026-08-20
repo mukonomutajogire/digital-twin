@@ -342,8 +342,12 @@ def respond_ai(message, history):
 #-----------------------------------------------------
 # Launch Gradio
 #-----------------------------------------------------
-demo = gr.ChatInterface(fn=respond_ai)
-
+demo = gr.ChatInterface(
+     fn=respond_ai,
+     title="Gaby's Digital Twin",
+#     chatbot=gr.Chatbot(avatar_images=(None, "gaby.jpeg")),
+     description="Chat with an AI version of Gaby Mutajogire. Ask about his experience, studies, or just say hi",
+     examples=["What's your background?","AI Engineering experience"])
 if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
