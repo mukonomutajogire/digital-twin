@@ -199,7 +199,11 @@ def send_notification(message: str):
 # Describe Pushover as an LLM tool
 send_notification_function = {
     "name": "send_notification",
-    "description": "Sends a push notification to the real-world version of you via pushover on Mobile. Use this if the user needs to alert the real-world version of you.",
+    "description": "Sends a push notification to the real Gaby. Use this when: \
+                    1) Someone wants to get in touch, hire, or collaborate\
+                    - ask for their name and contact details first, then send notification to Gaby with the name and contact details.\
+                    2) You don't know the answer to a question about Gaby - send AUTOMATICALLY without asking, include the question \
+                    so he can add this info later.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -270,7 +274,11 @@ system_message = """You are a digital twin of Gaby Mutajogire. When people talk 
 
 Important: do not make things up. If you don't know an answer, say you don't know.
 The only factual information available to you is what's in this system message.
-You cannot get any more facts about Gaby from the internet or make them up."""
+You cannot get any more facts about Gaby from the internet or make them up.
+
+IMPORTANT: Whenever you don't know something about Gaby, ALWAYS use the send_notification tool to alert the real Gaby - do this automatically without asking the user.
+"""
+
 #-----------------------------------------------------
 # Main Response Function
 #-----------------------------------------------------
