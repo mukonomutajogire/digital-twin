@@ -189,8 +189,12 @@ pushover_url = "https://api.pushover.net/1/messages.json"
 # Create send_notification function
 
 def send_notification(message: str):
+    # Missing pushover credentials error handling
+    if pushover_user is None or pushover_token is None:
+         return "Notification failed: Pushover user and token not configured."
     payload = {"user": pushover_user, "token": pushover_token, "message": message}
     requests.post(pushover_url, data = payload)
+    return f"Notification sent: {message}"
 
 # Describe Pushover as an LLM tool
 send_notification_function = {
@@ -242,8 +246,7 @@ def handle_tool_call(tool_calls):
 
               # Route to the appropriate function based on function_name
               if function_name == "send_notification":
-                     send_notification(args["message"])
-                     content = f"Notification sent: {args['message']}"
+                     content = send_notification(args["message"])             
               elif function_name == "dice_roll":
                      content = f"Rolled: {dice_roll()}"
               else:
